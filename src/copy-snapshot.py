@@ -1,0 +1,69 @@
+import json
+import boto3
+from botocore.exceptions import ClientError
+import os
+import sys
+from aws_lambda_powertools import Logger
+from rds_snapshot_helpers import *
+from kms_helpers import *
+
+
+logger = Logger()
+    
+def lambda_handler(event, context):
+    is_cluster = False
+    source_region = event['region']
+    dest_region = os.environ['DESTINATION_REGION']
+    copy_manual_snapshots = os.environ['COPY_MANUAL_SNAPSHOTS'].lower()
+
+    # Can be manual or automated
+    snapshot_type = get_snapshot_type(event)
+    
+    logger.info("Snapshot type: {}".format(snapshot_type))
+
+    if ( snapshot_type == 'manual' and copy_manual_snapshots == 'yes') or (snapshot_type == 'automated'):
+
+        # Various clients.  Defined in the handler because the region is  passed in the event
+        rds_source = boto3.client('rds',region_name=source_region)
+        rds_dest = boto3.client('rds',region_name=dest_region)
+        kms_dest = boto3.client('kms', region_name=dest_region)
+
+        source_snapshot_arn = event['detail']['SourceArn']
+        source_snapshot_id = source_snapshot_arn.split('snapshot:',1)[1]
+
+        logger.info("Source Snapshot ID: {}".format(source_snapshot_id))
+
+        # Was this snapshot generated from an RDS cluster?
+        is_cluster = is_snapshot_from_cluster(source_snapshot_arn)
+
+        dest_snapshot_name = source_snapshot_id.replace(":","-") + "-" + snapshot_type + "-CRR"
+
+        kms_key_id = None
+        
+        # Is the snapshot encrypted? If so we need a KMS key ID in the dest region
+        if is_snapshot_encrypted(rds_source, source_snapshot_id, is_cluster):
+            dest_kms_alias = os.environ['DESTINATION_KMS_ALIAS']
+            logger.info("The snapshot is encrypted - will use KMS key {} to encrypt".format(dest_kms_alias))
+
+            kms_key_id = get_kms_id_from_alias(kms_dest, dest_kms_alias)
+
+            if kms_key_id:
+                logger.debug("Destination KMS ID: {}".format(kms_key_id))
+            else:
+                logger.critical("No KMS key with alias {} found in region {}".format(dest_kms_alias,dest_region))
+                sys.exit(1)
+        else:
+            logger.info("Snapshot is not encrypted")
+
+        # Copy the snapshot
+        if copy_snapshot(rds_dest, source_region, source_snapshot_arn, dest_snapshot_name, kms_key_id, is_cluster):
+            logger.info("Snapshot copy successfully initated")
+        else:
+            logger.critical("Snapshot copy failed to initate")
+            sys.exit(1)
+
+        # PRUNE
+        # Never prune manual snapshots......
+    else:
+        print("Snapshot is type " + snapshot_type + " and COPY_MANUAL_SNAPSHOTS is " + os.environ['COPY_MANUAL_SNAPSHOTS'] + ". Exiting.")
+
