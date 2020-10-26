@@ -14,6 +14,7 @@ def lambda_handler(event, context):
     is_cluster = False
     source_region = event['region']
     dest_region = os.environ['DESTINATION_REGION']
+    snapshots_to_keep = os.environ['NUM_SNAPSHOTS_TO_KEEP']
     copy_manual_snapshots = os.environ['COPY_MANUAL_SNAPSHOTS'].lower()
 
     # Can be manual or automated
@@ -63,7 +64,20 @@ def lambda_handler(event, context):
             sys.exit(1)
 
         # PRUNE
-        # Never prune manual snapshots......
+        # There is a hole here in that we don't block for the new snapshot to be replicated
+        # so we will remove an older snapshot before the newer one has finished replicating
+        # In our case, this is "good enough" as we will keep many snapshots
+        db_name = get_db_for_snapshot(rds_source, source_snapshot_id, is_cluster)
+
+        if db_name:
+            logger.info("Keeping {} snapshots in {} for {}".format(snapshots_to_keep, dest_region, db_name))
+            if prune_snapshots(rds_dest, db_name, int(snapshots_to_keep), is_cluster):
+                logger.info("Snapshots pruned in region {} for DB {}".format(dest_region, db_name))
+            else:
+                logger.critical("Error pruning snapshots")
+                sys.exit(1)
+        else:
+            logger.critical("Unable to determine DB name for snapshot - cannot prune")
+            sys.exit(1)
     else:
         print("Snapshot is type " + snapshot_type + " and COPY_MANUAL_SNAPSHOTS is " + os.environ['COPY_MANUAL_SNAPSHOTS'] + ". Exiting.")
-
