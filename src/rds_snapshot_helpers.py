@@ -1,36 +1,57 @@
 from botocore.exceptions import ClientError
 from aws_lambda_powertools import Logger
-from pprint import pprint
 
 logger = Logger(child=True)
 
 def get_snapshot_type(event):
+    """
+    Returns whether a snapshot is manual or automated.
+
+    :param event: the raw cloudwatch event
+    """ 
+
     if 'manual' in event['detail']['Message'].lower():
         return 'manual'
 
     return 'automated'
 
-def is_snapshot_from_cluster(sourceSnapshotARN):
-    if 'cluster' in sourceSnapshotARN:
+def is_snapshot_from_cluster(source_snapshot_arn):
+    """
+    Returns whether a snapshot was generated from a cluster (Aurora)
+    or a "regular" RDS databases
+
+    :param source_snapshot_arn: arn of the snapshot
+    """ 
+
+    if 'cluster' in source_snapshot_arn:
         return True
 
     return False
 
-def get_db_for_snapshot(rds_client, snapshotID, is_cluster):
+def get_db_for_snapshot(rds_client, snapshot_id, is_cluster):
+    """
+    Returns the RDS database name a given snapshot was taken from
+    
+
+    :param rds_client: a valid boto RDS client
+    :param snapshot_id: The ID of the snapshot
+    :param is_cluster: Boolean, whether the snapshot was from a cluster (Aurora)
+    """ 
+
     db_name = None
-    logger.debug("Getting db name for snapshot {}".format(snapshotID))
+    logger.debug("Getting db name for snapshot {}".format(snapshot_id))
 
     try:
         if is_cluster:
             response = rds_client.describe_db_cluster_snapshots(
-                DBClusterSnapshotIdentifier=snapshotID
+                DBClusterSnapshotIdentifier=snapshot_id
             )
 
             if response and 'KmsKeyId' in response['DBClusterSnapshots'][0]:
                 db_name = response['DBClusterSnapshots'][0]['DBClusterIdentifier']
         else:
             response = rds_client.describe_db_snapshots(
-                DBSnapshotIdentifier=snapshotID
+                DBSnapshotIdentifier=snapshot_id
             )
 
             if response:
@@ -42,21 +63,29 @@ def get_db_for_snapshot(rds_client, snapshotID, is_cluster):
     return db_name
 
 
-def is_snapshot_encrypted(rds_client, snapshotID, is_cluster):
+def is_snapshot_encrypted(rds_client, snapshot_id, is_cluster):
+    """
+    Determine whether a snapshot is encrypted with KMS
+
+    :param rds_client: a valid boto RDS client
+    :param snapshotID: The ID of the snapshot
+    :param is_cluster: Boolean, whether the snapshot was from a cluster (Aurora)
+    """ 
+
     encrypted = False
-    logger.debug("Checking if snapshot {} is encrypted".format(snapshotID))
+    logger.debug("Checking if snapshot {} is encrypted".format(snapshot_id))
 
     try:
         if is_cluster:
             response = rds_client.describe_db_cluster_snapshots(
-                DBClusterSnapshotIdentifier=snapshotID
+                DBClusterSnapshotIdentifier=snapshot_id
             )
 
             if response and 'KmsKeyId' in response['DBClusterSnapshots'][0]:
                 encrypted = True
         else:
             response = rds_client.describe_db_snapshots(
-                DBSnapshotIdentifier=snapshotID
+                DBSnapshotIdentifier=snapshot_id
             )
 
             if response:
@@ -68,6 +97,17 @@ def is_snapshot_encrypted(rds_client, snapshotID, is_cluster):
     return encrypted
 
 def copy_snapshot(rds_client, source_region, source_arn, dest_snapshot_id, kms_key_id, is_cluster):
+    """
+    Copies a given snapshot to a destination region
+
+    :param rds_client: a valid boto RDS client
+    :param source_region: The ID of the snapshot
+    :param source_arn: arn of the source snapshot to copy
+    :param dest_snapshot_id: The ID (name) of the snapshot at the destination (must be unique)
+    :param kms_key_id: Optional KMS key ID to encrypt the destination snapshot with
+    :param is_cluster: Boolean, whether the snapshot was from a cluster (Aurora)
+    """ 
+
     status = False
     copy_args = {}
 
@@ -102,6 +142,16 @@ def copy_snapshot(rds_client, source_region, source_arn, dest_snapshot_id, kms_k
     return status
 
 def prune_snapshots(rds_client, db_name, num_snapshots_to_keep, is_cluster):
+    """
+    Prunes (removes) older snapshots from a region
+
+    :param rds_client: a valid boto RDS client
+    :param db_name: Name of the RDS database to prune snapshots for
+    :param num_snapshots_to_keep: Number of snapshots to keep (any existing over this will be deleted)
+    :param dest_snapshot_id: The ID (name) of the snapshot at the destination (must be unique)
+    :param is_cluster: Boolean, whether the snapshot was from a cluster (Aurora)
+    """ 
+
     status = True
     snapshot_list_key = None
     snapshot_id_key = None
@@ -129,6 +179,13 @@ def prune_snapshots(rds_client, db_name, num_snapshots_to_keep, is_cluster):
 
     if response and snapshot_list_key in response:
         snapshot_list = response[snapshot_list_key]
+
+        # Any snapshots in progress will not yet have a create time so exclude them from pruning
+        for idx, snapshot in enumerate(snapshot_list):
+            if 'SnapshotCreateTime' not in snapshot:
+                logger.info("Snapshot {} has no create time - will not consider for pruning".format(snapshot[snapshot_id_key]))
+                del snapshot_list[idx]
+
         snapshot_list.sort(key=lambda x: x['SnapshotCreateTime'], reverse=True)
 
     # Only purge any snapshots outside our max number to keep

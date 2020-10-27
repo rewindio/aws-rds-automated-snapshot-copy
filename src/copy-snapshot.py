@@ -7,10 +7,14 @@ from aws_lambda_powertools import Logger
 from rds_snapshot_helpers import *
 from kms_helpers import *
 
-
 logger = Logger()
     
 def lambda_handler(event, context):
+    """
+    Copies an RDS snapshot to an anternate region.
+    Prunes older snapshots from the destination region
+    """ 
+
     is_cluster = False
     source_region = event['region']
     dest_region = os.environ['DESTINATION_REGION']
