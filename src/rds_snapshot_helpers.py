@@ -137,7 +137,7 @@ def copy_snapshot(rds_client, source_region, source_arn, dest_snapshot_id, kms_k
         if ex.response['Error']['Code'] == 'DBSnapshotAlreadyExists':
             logger.info("Snapshot {} already exists".format(dest_snapshot_id))
         else:
-            logger.critical("Unable to copy snapshot: {}".format(ex.response['Error']['Code']))
+            logger.critical("Unable to copy snapshot: {} ()".format(ex.response['Error']['Code'], ex.response['Error']['Message']))
 
     return status
 
