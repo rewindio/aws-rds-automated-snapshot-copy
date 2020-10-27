@@ -8,12 +8,18 @@ from rds_snapshot_helpers import *
 from kms_helpers import *
 
 logger = Logger()
-    
+
+@logger.inject_lambda_context(log_event=True)
 def lambda_handler(event, context):
     """
     Copies an RDS snapshot to an anternate region.
     Prunes older snapshots from the destination region
-    """ 
+    """
+
+    #Manual snapshot created\",
+    if 'created' not in event['detail']['Message'].lower():
+        logger.info("Received event for a snapshot but the snapshot is not yet finished being created")
+        return 0
 
     is_cluster = False
     source_region = event['region']
@@ -56,7 +62,7 @@ def lambda_handler(event, context):
                 logger.debug("Destination KMS ID: {}".format(kms_key_id))
             else:
                 logger.critical("No KMS key with alias {} found in region {}".format(dest_kms_alias,dest_region))
-                sys.exit(1)
+                return 1
         else:
             logger.info("Snapshot is not encrypted")
 
@@ -65,7 +71,7 @@ def lambda_handler(event, context):
             logger.info("Snapshot copy successfully initated")
         else:
             logger.critical("Snapshot copy failed to initate")
-            sys.exit(1)
+            return 1
 
         # PRUNE
         # There is a hole here in that we don't block for the new snapshot to be replicated
@@ -79,9 +85,11 @@ def lambda_handler(event, context):
                 logger.info("Snapshots pruned in region {} for DB {}".format(dest_region, db_name))
             else:
                 logger.critical("Error pruning snapshots")
-                sys.exit(1)
+                return 1
         else:
             logger.critical("Unable to determine DB name for snapshot - cannot prune")
-            sys.exit(1)
+            return 1
     else:
         print("Snapshot is type " + snapshot_type + " and COPY_MANUAL_SNAPSHOTS is " + os.environ['COPY_MANUAL_SNAPSHOTS'] + ". Exiting.")
+
+    return 0

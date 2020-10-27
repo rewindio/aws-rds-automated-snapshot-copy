@@ -60,7 +60,6 @@ Resources:
           DESTINATION_REGION: !Ref DestinationRegion
           DESTINATION_KMS_ALIAS: !Ref DestinationKMSAlias
           LOG_LEVEL: !Ref LogLevel
-          POWERTOOLS_LOGGER_LOG_EVENT: true 
           POWERTOOLS_SERVICE_NAME: rds-snapshot-copy
       Tags:
         product: common
