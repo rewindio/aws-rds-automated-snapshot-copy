@@ -1,0 +1,11 @@
+{
+    "SnapshotCopy": {
+      "COPY_MANUAL_SNAPSHOTS": "yes",
+      "NUM_SNAPSHOTS_TO_KEEP": "3",
+      "DESTINATION_REGION": "us-east-2",
+      "DESTINATION_KMS_ALIAS": "aws/rds",
+      "LOG_LEVEL": "DEBUG",
+      "POWERTOOLS_LOGGER_LOG_EVENT": "true",
+      "POWERTOOLS_SERVICE_NAME": "rds-snapshot-copy"
+    }
+  }

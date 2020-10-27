@@ -39,3 +39,10 @@ There are only a small number of configuration parameters that can be passed to 
 - CopyManualSnapshots - If set to _yes_, manually created snapshots as well as RDS automated snapshots are copied
 - LogLevel - logging level to apply (default: INFO)
 
+## Local Dev
+
+To run locally, create an env-vars file and an event file (see samples in local-dev) and then invoke sam locally with
+
+```bash
+sam build --use-container && sam local invoke "SnapshotCopy" -e event.json --env-vars env-vars.json --profile staging --region us-east-1
+```
