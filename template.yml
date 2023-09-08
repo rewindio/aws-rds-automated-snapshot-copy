@@ -1,0 +1,123 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Copy an RDS snapshot cross region
+
+Globals:
+  Function:
+    Timeout: 30
+
+Parameters:
+  DestinationRegion:
+    Type: String
+    Description: Destination region to copy snapshots to
+
+  DestinationKMSAlias:
+    Type: String
+    Description: Alias of the KMS key used in the destination region to encrypt
+    Default: 'aws/rds'
+
+  CopyManualSnapshots:
+    Type: String
+    AllowedValues:
+       - 'yes'
+       - 'no'
+    Default: 'yes'
+    Description: Whether to copy manually generated snapshots or not
+
+  NumberOfSnapshotsToKeep:
+    Type: String
+    Description: Keep this many snapshots in the destination region
+
+  LogLevel:
+    Type: String
+    AllowedValues:
+      - CRITICAL
+      - ERROR
+      - WARNING
+      - INFO
+      - DEBUG
+    Default: INFO
+    Description: Logging level
+Resources:
+
+  # ----------------------------------------------------------------------------
+  # AWS::Serverless::Function
+  # ----------------------------------------------------------------------------
+
+  SnapshotCopy:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Copy RDS snapshots cross-region
+      CodeUri: src/
+      Handler: copy-snapshot.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt SnapshotCopyIAMRole.Arn
+      Environment:
+        Variables:
+          COPY_MANUAL_SNAPSHOTS: !Ref CopyManualSnapshots
+          NUM_SNAPSHOTS_TO_KEEP: !Ref NumberOfSnapshotsToKeep
+          DESTINATION_REGION: !Ref DestinationRegion
+          DESTINATION_KMS_ALIAS: !Ref DestinationKMSAlias
+          LOG_LEVEL: !Ref LogLevel
+          POWERTOOLS_SERVICE_NAME: rds-snapshot-copy
+      Tags:
+        lambda: snapshot-copy
+      Events:
+        TriggerOnNewSnapshot:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+                source:
+                  - aws.rds
+                detail-type:
+                  - 'RDS DB Snapshot Event'
+                detail:
+                  EventCategories:
+                    - creation
+
+
+  # ----------------------------------------------------------------------------
+  # AWS::IAM::Role
+  # ----------------------------------------------------------------------------
+
+  SnapshotCopyIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Sid: "AllowLambdaServiceToAssumeRole"
+            Effect: "Allow"
+            Action:
+              - "sts:AssumeRole"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: "AllowRDSSnapshotManipulation"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:DeleteDBClusterSnapshot
+                  - rds:DescribeDBSnapshots
+                  - rds:CopyDBSnapshot
+                  - rds:CopyDBClusterSnapshot
+                  - rds:DescribeDBClusterSnapshots
+                  - rds:CreateDBClusterSnapshot
+                  - rds:DeleteDBSnapshot
+                  - rds:AddTagsToResource
+                  - rds:ListTagsForResource
+                Resource:
+                  - '*'
+              - Effect: Allow
+                Action:
+                  - kms:ListAliases
+                  - kms:DescribeKey
+                Resource:
+                  - '*'

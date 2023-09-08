@@ -1,0 +1,9 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "rds-snapshot-copy"
+s3_prefix = "rds-snapshot-copy"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+tags = "product=\"common\" grouping=\"tooling\" service=\"backups\" managed-resource=\"sam\""

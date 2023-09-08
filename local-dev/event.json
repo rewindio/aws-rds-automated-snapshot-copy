@@ -1,0 +1,22 @@
+{
+    "version":"0",
+    "id":"0aac60a6-a31e-53f0-796b-abcdefg",
+    "detail-type":"RDS DB Snapshot Event",
+    "source":"aws.rds",
+    "account":"1234567890",
+    "time":"2020-10-19T15:49:34Z",
+    "region":"us-east-1",
+    "resources":[
+       "arn:aws:rds:us-east-1:1234567890:snapshot:my-db-snapshot-name"
+    ],
+    "detail":{
+       "EventCategories":[
+          "creation"
+       ],
+       "SourceType":"SNAPSHOT",
+       "SourceArn":"arn:aws:rds:us-east-1:1234567890:snapshot:my-db-snapshot-name",
+       "Date":"2020-10-19T15:49:34.824Z",
+       "Message":"Creating manual snapshot",
+       "SourceIdentifier":"my-db-snapshot-name"
+    }
+ }
