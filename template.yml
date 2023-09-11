@@ -51,7 +51,7 @@ Resources:
       Description: Copy RDS snapshots cross-region
       CodeUri: src/
       Handler: copy-snapshot.lambda_handler
-      Runtime: python3.7
+      Runtime: python3.11
       Role: !GetAtt SnapshotCopyIAMRole.Arn
       Environment:
         Variables:
